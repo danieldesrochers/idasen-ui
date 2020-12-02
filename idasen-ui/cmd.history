@@ -1,0 +1,2 @@
+# Build  a distrib from
+pyinstaller idasen-ui.spec
