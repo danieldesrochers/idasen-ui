@@ -15,13 +15,15 @@ The desk should be connected and paired to the computer.
 
 Install Idasen-UI
 =================
-Download idasen-ui package from win32-build (https://github.com/danieldesrochers/idasen-ui/tree/main/win32-build)
+- Download idasen-ui package from win32-build (https://github.com/danieldesrochers/idasen-ui/tree/main/win32-build)
 
-Unzip the package to any <folder> with read-write user permissions (e.g.: c:/MyPrograms)
+- Unzip the package to any <folder> with read-write user permissions (e.g.: c:/MyPrograms)
 
-Browse to your extracted <folder>/idasen-ui 
+- owse to your extracted <folder>/idasen-ui 
 
-Run 'idasen-ui.exe'
+- n 'idasen-ui.exe'
+
+For faster access to the application, consider creating a shortcut in the desktop and start menu.
 
 How To Use Idasen-UI
 ====================
@@ -40,6 +42,3 @@ Click Bluetooth button to discover your desk and save initial configuration.
 - Press M(emory) button to save the current position to 1 or 2.
 - Press position 1 or 2 to move the desk to the save position.
 
-Note
-----
-For faster access to the application, consider creating a shortcut to the desktop and start menu.
