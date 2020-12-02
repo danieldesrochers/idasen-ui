@@ -21,9 +21,9 @@ Install Idasen-UI
 
 - Unzip the package to any <folder> with read-write user permissions (e.g.: c:/MyPrograms)
 
-- owse to your extracted <folder>/idasen-ui 
+- Browse to your extracted <folder>/idasen-ui 
 
-- n 'idasen-ui.exe'
+- Run 'idasen-ui.exe'
 
 For faster access to the application, consider creating a shortcut in the desktop and start menu.
 
