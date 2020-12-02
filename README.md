@@ -31,7 +31,7 @@ How To Use Idasen-UI
 ====================
 Idasen Desk Control application is a simple graphical user interface.
 
-Discover your desk
+Connect your desk
 ------------------
 When application runs for the first time, no save configuration will be found.
 Click Bluetooth button to discover your desk and save initial configuration.
