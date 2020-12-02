@@ -25,7 +25,7 @@ Install Idasen-UI
 
 - Run 'idasen-ui.exe'
 
-For faster access to the application, consider creating a shortcut in the desktop and start menu.
+For faster access to the application, consider creating a shortcut on your desktop and start menu.
 
 How To Use Idasen-UI
 ====================
