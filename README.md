@@ -25,16 +25,15 @@ How To Use Idasen-UI
 ====================
 Idasen Desk Control application is a simple graphical user interface.
 
-When application will run for the first time, no save configuration will be found.
-
+Discover your desk
+------------------
+When application runs for the first time, no save configuration will be found.
 Click Bluetooth button to discover your desk and save initial configuration.
 
-
+You are connected!
+------------------
 Once connected to the desk, current desk position will be displayed and moving buttons will be enabled. 
-
-
-Press and maintain the up/down arrow the move the desk to the desired position.
-
-Press M(emory) button to save the current position to 1 or 2.
-
-Press position 1 or 2 to move the desk to the save position.
+Click Bluetooth button to discover your desk and save initial configuration.
+- Press and maintain the up/down arrow the move the desk to the desired position.
+- Press M(emory) button to save the current position to 1 or 2.
+- Press position 1 or 2 to move the desk to the save position.
