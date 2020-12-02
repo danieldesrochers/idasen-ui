@@ -44,3 +44,6 @@ Click Bluetooth button to discover your desk and save initial configuration.
 - Press M(emory) button to save the current position to 1 or 2.
 - Press position 1 or 2 to move the desk to the save position.
 
+Known issues
+============
+IKEA IDASEN Desk internal Linak controller seems to have a built-in memory for previous positions. This could cause some weird move effects. The app will retry twice to move to the right direction. The built-in memory issue seems to reduce while using the application for a longer period since the previous built-in positions match those from the application.
