@@ -18,6 +18,7 @@ import sys
 import voluptuous as vol
 import yaml
 import time
+import clr
 
 HOME = os.path.expanduser("~")
 IDASEN_CONFIG_DIRECTORY = os.path.join(HOME, ".config", "idasen-ui")
@@ -46,7 +47,12 @@ CONFIG_SCHEMA = vol.Schema(
 def log(msg):
     if LOG_TO_CONSOLE:
         print(msg)
-        
+            
+def message_to_user(msg):
+        dlg = wx.MessageDialog(None, msg, "Message", wx.OK|wx.ICON_EXCLAMATION)
+        dlg.ShowModal()
+        dlg.Destroy()        
+                     
 def align_bottom_right(win):
     dw, dh = wx.DisplaySize()
     w, h = win.GetSize()
@@ -54,12 +60,6 @@ def align_bottom_right(win):
     y = dh - h - 40
     win.SetPosition((x, y))
     
-def message_to_user(msg):
-        dlg = wx.MessageDialog(None, msg, "Message", wx.OK|wx.ICON_EXCLAMATION)
-        dlg.ShowModal()
-        dlg.Destroy()        
-                     
-                     
 def save_config(config: dict, path: str = IDASEN_CONFIG_PATH):
     with open(path, "w") as f:
         yaml.dump(config, f)
@@ -114,7 +114,8 @@ class DeskWorkerThread(Thread):
         self.workerThread = False
 
     def connect(self) -> bool:
-        self.idasen_desk = IdasenDesk(config["mac_address"], exit_on_fail=False)          
+        self.idasen_desk = IdasenDesk(config["mac_address"], exit_on_fail=False)      
+        self.idasen_desk.RETRY_COUNT = 0
         asyncio.run(self.idasen_desk._connect())            
         self.connected = asyncio.run(self.idasen_desk.is_connected())
         return self.connected    
@@ -153,88 +154,93 @@ class DeskWorkerThread(Thread):
         refresh_counter_limit = 10
         refresh_auto_counter = refresh_counter_limit        
 
-        while self.workerThread:
-            # pseudo-realtime running loop, everything in there should be quick
-            # move up sequence
-            if self._notify_window.buttonUpPressed:
-                log("moving up...")
-                asyncio.run(self.idasen_desk.move_up())
-                deskMovingUp = True
-                deskMovingDown = False             
-                self.desk_height_target = 0.0                
-                refresh_auto_counter = refresh_counter_limit #force refresh
-            # move down sequence
-            elif self._notify_window.buttonDownPressed:
-                log("moving down...")
-                asyncio.run(self.idasen_desk.move_down())
-                deskMovingUp = False
-                deskMovingDown = True     
-                self.desk_height_target = 0.0   
-                refresh_auto_counter = refresh_counter_limit #force refresh
-            # stop moving
-            elif deskMovingUp or deskMovingDown:
-                log("stop moving up...")
-                asyncio.run(self.idasen_desk.stop())
-                deskMovingUp = False
-                deskMovingDown = False        
-                self.desk_height_target = 0.0   
-                refresh_auto_counter = refresh_counter_limit #force refresh
-                
-            # move_to_height button 1 or 2 pressed, let's move to target
-            if self.desk_height_target != 0.0:
-                difference = self.desk_height_target - self.current_height
-                log(f"{self.desk_height_target=} {self.current_height=} {difference=}")  
-                #------------------------------------------
-                # ---- protection for idasen desk move issue
-                # ---- but only retry twice to reach the target height
-                # ---- required in case something blocks the desk from moving up or down
-                if previous_difference == difference:
-                    bug_protection_counter = bug_protection_counter + 1
-                else:
-                    bug_protection_counter = 0
-                    bug_protection_retry = 0
-                    previous_difference = difference                
-                if bug_protection_counter > 9:
-                    log("waiting 1 sec for desk to catch up...")
-                    time.sleep(1)
-                    bug_protection_retry = bug_protection_retry + 1
-                if bug_protection_retry > 2:
-                    log("Someting wrong... cancelling move_to_height")
+        try:
+            while self.workerThread:
+                # pseudo-realtime running loop, everything in there should be quick
+                # move up sequence
+                if self._notify_window.buttonUpPressed:
+                    log("moving up...")
+                    asyncio.run(self.idasen_desk.move_up())
+                    deskMovingUp = True
+                    deskMovingDown = False             
+                    self.desk_height_target = 0.0                
+                    refresh_auto_counter = refresh_counter_limit #force refresh
+                # move down sequence
+                elif self._notify_window.buttonDownPressed:
+                    log("moving down...")
+                    asyncio.run(self.idasen_desk.move_down())
+                    deskMovingUp = False
+                    deskMovingDown = True     
+                    self.desk_height_target = 0.0   
+                    refresh_auto_counter = refresh_counter_limit #force refresh
+                # stop moving
+                elif deskMovingUp or deskMovingDown:
+                    log("stop moving up...")
                     asyncio.run(self.idasen_desk.stop())
                     deskMovingUp = False
                     deskMovingDown = False        
                     self.desk_height_target = 0.0   
-                    refresh_auto_counter = refresh_counter_limit #force refresh                         
-                # ---- end of protection                        
-                #------------------------------------------
-                if abs(difference) < 0.005:  # tolerance of 0.005 meters
-                    log(f"reached target of {self.desk_height_target:.3f}")
-                    self.desk_height_target = 0.0
-                    asyncio.run(self.idasen_desk.stop())                   
-                elif difference > 0:
-                    log("moving up...")
-                    asyncio.run(self.idasen_desk.move_up())  
-                elif difference < 0:
-                    log("moving down...")
-                    asyncio.run(self.idasen_desk.move_down())                    
-                refresh_auto_counter = refresh_counter_limit #force refresh                   
+                    refresh_auto_counter = refresh_counter_limit #force refresh
+                    
+                # move_to_height button 1 or 2 pressed, let's move to target
+                if self.desk_height_target != 0.0:
+                    difference = self.desk_height_target - self.current_height
+                    log(f"{self.desk_height_target=} {self.current_height=} {difference=}")  
+                    #------------------------------------------
+                    # ---- protection for idasen desk move issue
+                    # ---- but only retry twice to reach the target height
+                    # ---- required in case something blocks the desk from moving up or down
+                    if previous_difference == difference:
+                        bug_protection_counter = bug_protection_counter + 1
+                    else:
+                        bug_protection_counter = 0
+                        bug_protection_retry = 0
+                        previous_difference = difference                
+                    if bug_protection_counter > 9:
+                        log("waiting 1 sec for desk to catch up...")
+                        time.sleep(1)
+                        bug_protection_retry = bug_protection_retry + 1
+                    if bug_protection_retry > 2:
+                        log("Someting wrong... cancelling move_to_height")
+                        asyncio.run(self.idasen_desk.stop())
+                        deskMovingUp = False
+                        deskMovingDown = False        
+                        self.desk_height_target = 0.0   
+                        refresh_auto_counter = refresh_counter_limit #force refresh                         
+                    # ---- end of protection                        
+                    #------------------------------------------
+                    if abs(difference) < 0.005:  # tolerance of 0.005 meters
+                        log(f"reached target of {self.desk_height_target:.3f}")
+                        self.desk_height_target = 0.0
+                        asyncio.run(self.idasen_desk.stop())                   
+                    elif difference > 0:
+                        log("moving up...")
+                        asyncio.run(self.idasen_desk.move_up())  
+                    elif difference < 0:
+                        log("moving down...")
+                        asyncio.run(self.idasen_desk.move_down())                    
+                    refresh_auto_counter = refresh_counter_limit #force refresh                   
 
-            #auto-refresh current height label
-            if refresh_auto_counter >= refresh_counter_limit:                
-                height = asyncio.run(self.idasen_desk.get_height())
-                if self.current_height != height:
-                    self.current_height = height
-                    self._notify_window.gbHeightBtn.SetLabel(f"{self.current_height:.2f}")
-                    self._notify_window.gbHeightBtn.Refresh() 
-                refresh_auto_counter = 0
-            else:
-                # we are IDLE... refresh UI slowly
-                refresh_auto_counter = refresh_auto_counter + 1
-                time.sleep(0.5)
+                #auto-refresh current height label
+                if refresh_auto_counter >= refresh_counter_limit:                
+                    height = asyncio.run(self.idasen_desk.get_height())
+                    if self.current_height != height:
+                        self.current_height = height
+                        self._notify_window.gbHeightBtn.SetLabel(f"{self.current_height:.2f}")
+                        self._notify_window.gbHeightBtn.Refresh() 
+                    refresh_auto_counter = 0
+                else:
+                    # we are IDLE... refresh UI slowly
+                    refresh_auto_counter = refresh_auto_counter + 1
+                    time.sleep(0.5)
 
-        # End of while loop
-        log("Returning from worker thread.")
-
+            # End of while loop
+            log("Returning from worker thread.")
+        except Exception as e:
+            log(e)
+            self.connected = False
+            self.workerThread = False 
+            self._notify_window.showDisabledButton()
         
 class MyForm(wx.Frame):
  
@@ -254,7 +260,7 @@ class MyForm(wx.Frame):
         btsize = wx.Size(60,46)
         self.gbBluetoothBtn = GB.GradientButton(panel, bitmap=bmp, label="", size=btsize)                        
         self.gbBluetoothBtn.Bind(wx.EVT_BUTTON, self.onBtBtnPress) 
-        self.gbBluetoothBtn.SetToolTip(wx.ToolTip("Make sure Idasen desk is connected to computer.\nPress Bluetooth button to discover desk."))                         
+        self.gbBluetoothBtn.SetToolTip(wx.ToolTip("Make sure desk is connected and paired to computer.\nPress Bluetooth button to discover desk."))                         
                                   
         self.gbHeightBtn = GB.GradientButton(panel, label="N/A")
         size = wx.Size(75,46)
@@ -299,8 +305,7 @@ class MyForm(wx.Frame):
         try:            
             if self.idasen_desk.connect():            
                 self.showConnectedButton()
-                self.idasen_desk.start_running_loop()
-        
+                self.idasen_desk.start_running_loop()        
         except Exception as e:
             log("No saved config found")
             
@@ -323,6 +328,22 @@ class MyForm(wx.Frame):
         self.idasen_desk.stop_running_loop()
         time.sleep(0.5) #wait for thread to exit
         event.Skip()
+        
+    def showDisabledButton(self):                
+        self.gbBluetoothBtn.SetBitmapLabel(wx.Bitmap("bt-nc.png", wx.BITMAP_TYPE_ANY))
+        self.gbBluetoothBtn.Enable()
+        self.gbHeightBtn.SetLabel("N/A")
+        self.gbHeightBtn.Refresh() 
+        self.gbUpBtn.SetBitmapLabel(wx.Bitmap("up-nc.png", wx.BITMAP_TYPE_ANY))        
+        self.gbUpBtn.Disable()        
+        self.gbDownBtn.SetBitmapLabel(wx.Bitmap("down-nc.png", wx.BITMAP_TYPE_ANY))
+        self.gbDownBtn.Disable()        
+        self.pos1Btn.SetBitmapLabel(wx.Bitmap("pos1-nc.png", wx.BITMAP_TYPE_ANY))
+        self.pos1Btn.Disable()               
+        self.pos2Btn.SetBitmapLabel(wx.Bitmap("pos2-nc.png", wx.BITMAP_TYPE_ANY))
+        self.pos2Btn.Disable()               
+        self.gbMBtn.SetBitmapLabel(wx.Bitmap("m-nc.png", wx.BITMAP_TYPE_ANY))
+        self.gbMBtn.Disable()        
 
     def showConnectedButton(self):        
         self.gbBluetoothBtn.SetBitmapLabel(wx.Bitmap("bt.png", wx.BITMAP_TYPE_ANY))
@@ -338,8 +359,7 @@ class MyForm(wx.Frame):
         self.gbMBtn.SetBitmapLabel(wx.Bitmap("m.png", wx.BITMAP_TYPE_ANY))
         self.gbMBtn.Enable()
         
-
-    
+        
     def onBtBtnPress(self, event):
         """"""        
         log("BT button pressed! Trying to discover_desk...")
@@ -349,6 +369,10 @@ class MyForm(wx.Frame):
                 log("Desk connected! Enabling and starting running loop...")
                 self.showConnectedButton()
                 self.idasen_desk.start_running_loop()
+            else:
+                log("Desk found but cannot connect to it.")
+        else:
+            message_to_user("Unable discover desk from Bluetooth devices.\nMake sure desk is connected and paired to the computer.")
 
     def onBtnUpPress(self, event):
         """"""
@@ -411,7 +435,7 @@ class MyForm(wx.Frame):
         self.gbUpBtn.Enable()
         self.gbDownBtn.Enable()        
 
-   
+
 # Run the program
 config = load_config()
 if __name__ == "__main__":   
@@ -420,4 +444,3 @@ if __name__ == "__main__":
     align_bottom_right(frame)    
     frame.Show()
     app.MainLoop()
-    
