@@ -39,7 +39,6 @@ Click Bluetooth button to discover your desk and save initial configuration.
 You are connected!
 ------------------
 Once connected to the desk, current desk position will be displayed and moving buttons will be enabled. 
-Click Bluetooth button to discover your desk and save initial configuration.
 - Press and maintain the up/down arrow the move the desk to the desired position.
 - Press M(emory) button to save the current position to 1 or 2.
 - Press position 1 or 2 to move the desk to the save position.
