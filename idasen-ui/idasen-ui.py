@@ -1,4 +1,9 @@
 # IDASEN UI - DESK CONTROL
+# TODO: log to file control by config ?
+# TODO: implement 4 buttons version
+# TODO: right-click to menu 
+#         - move window to other screen
+
 import wx
 import wx.adv
 import wx.lib.agw.gradientbutton as GB
@@ -23,11 +28,13 @@ import clr
 HOME = os.path.expanduser("~")
 IDASEN_CONFIG_DIRECTORY = os.path.join(HOME, ".config", "idasen-ui")
 IDASEN_CONFIG_PATH = os.path.join(IDASEN_CONFIG_DIRECTORY, "idasen-ui.yaml")
-LOG_TO_CONSOLE = False
+LOG_TO_CONSOLE = True
 
 DEFAULT_CONFIG = {
-    "positions": {"pos2": 1.1, "pos1": 0.70},
     "mac_address": "AA:AA:AA:AA:AA:AA",
+    "positions": {"pos2": 1.1, "pos1": 0.70},
+    "always_on_top": 0,
+    
 }
 
 CONFIG_SCHEMA = vol.Schema(
@@ -39,10 +46,10 @@ CONFIG_SCHEMA = vol.Schema(
                 vol.Range(min=IdasenDesk.MIN_HEIGHT, max=IdasenDesk.MAX_HEIGHT),
             )
         },
+        "always_on_top": vol.All(int),        
     },
     extra=False,
 )
-
        
 def log(msg):
     if LOG_TO_CONSOLE:
@@ -57,7 +64,7 @@ def align_bottom_right(win):
     dw, dh = wx.DisplaySize()
     w, h = win.GetSize()
     x = dw - w
-    y = dh - h - 40
+    y = dh - h - 35
     win.SetPosition((x, y))
     
 def save_config(config: dict, path: str = IDASEN_CONFIG_PATH):
@@ -73,11 +80,15 @@ def load_config(path: str = IDASEN_CONFIG_PATH) -> dict:
     except FileNotFoundError:
         return {}
 
+    # convert old config file format
+    if "always_on_top" not in config:
+        config["always_on_top"] = 0
+        save_config(config, path)
+        
     try:
         config = CONFIG_SCHEMA(config)
     except vol.Invalid as e:
-        log(f"Invalid configuration: {e}", file=sys.stderr)
-        sys.exit(1)
+        message_to_user(f"Invalid configuration: {e}", file=sys.stderr)
         
     return config
         
@@ -105,10 +116,10 @@ async def discover_desk() -> bool:
 # Thread class that executes processing
 class DeskWorkerThread(Thread):
     """Worker Thread Class."""
-    def __init__(self, notify_window):
+    def __init__(self, parent_window):
         """Init Worker Thread Class."""                
         Thread.__init__(self)
-        self._notify_window = notify_window
+        self._parent_window = parent_window
         self.current_height = 0.0
         self.desk_height_target = 0.0
         self.workerThread = False
@@ -146,6 +157,7 @@ class DeskWorkerThread(Thread):
         """Run Worker Thread."""   
         log("Starting worker thread...")
 
+        deskMovingAutomatically = False
         deskMovingUp = False
         deskMovingDown = False
         previous_difference = 0.0
@@ -158,19 +170,21 @@ class DeskWorkerThread(Thread):
             while self.workerThread:
                 # pseudo-realtime running loop, everything in there should be quick
                 # move up sequence
-                if self._notify_window.buttonUpPressed:
+                if self._parent_window.buttonUpPressed:
                     log("moving up...")
                     asyncio.run(self.idasen_desk.move_up())
                     deskMovingUp = True
                     deskMovingDown = False             
+                    deskMovingAutomatically = False
                     self.desk_height_target = 0.0                
                     refresh_auto_counter = refresh_counter_limit #force refresh
                 # move down sequence
-                elif self._notify_window.buttonDownPressed:
+                elif self._parent_window.buttonDownPressed:
                     log("moving down...")
                     asyncio.run(self.idasen_desk.move_down())
                     deskMovingUp = False
-                    deskMovingDown = True     
+                    deskMovingDown = True 
+                    deskMovingAutomatically = False                    
                     self.desk_height_target = 0.0   
                     refresh_auto_counter = refresh_counter_limit #force refresh
                 # stop moving
@@ -178,14 +192,15 @@ class DeskWorkerThread(Thread):
                     log("stop moving up...")
                     asyncio.run(self.idasen_desk.stop())
                     deskMovingUp = False
-                    deskMovingDown = False        
+                    deskMovingDown = False 
+                    deskMovingAutomatically = False
                     self.desk_height_target = 0.0   
                     refresh_auto_counter = refresh_counter_limit #force refresh
                     
                 # move_to_height button 1 or 2 pressed, let's move to target
                 if self.desk_height_target != 0.0:
                     difference = self.desk_height_target - self.current_height
-                    log(f"{self.desk_height_target=} {self.current_height=} {difference=}")  
+                    log(f"{self.desk_height_target=:.2f} {self.current_height=:.2f} {difference=:.2f}")  
                     #------------------------------------------
                     # ---- protection for idasen desk move issue
                     # ---- but only retry twice to reach the target height
@@ -200,25 +215,36 @@ class DeskWorkerThread(Thread):
                         log("waiting 1 sec for desk to catch up...")
                         time.sleep(1)
                         bug_protection_retry = bug_protection_retry + 1
+                        bug_protection_counter = 0
                     if bug_protection_retry > 2:
                         log("Someting wrong... cancelling move_to_height")
                         asyncio.run(self.idasen_desk.stop())
                         deskMovingUp = False
                         deskMovingDown = False        
+                        deskMovingAutomatically = False
                         self.desk_height_target = 0.0   
                         refresh_auto_counter = refresh_counter_limit #force refresh                         
                     # ---- end of protection                        
                     #------------------------------------------
                     if abs(difference) < 0.005:  # tolerance of 0.005 meters
-                        log(f"reached target of {self.desk_height_target:.3f}")
+                        log(f"reached target of {self.desk_height_target:.2f}")
                         self.desk_height_target = 0.0
+                        deskMovingAutomatically = False
                         asyncio.run(self.idasen_desk.stop())                   
                     elif difference > 0:
                         log("moving up...")
                         asyncio.run(self.idasen_desk.move_up())  
+                        if deskMovingAutomatically == False:
+                            time.sleep(0.5)
+                            deskMovingAutomatically = True  
+                            log("waiting 500 msec for desk to workaround issue...")                                
                     elif difference < 0:
                         log("moving down...")
-                        asyncio.run(self.idasen_desk.move_down())                    
+                        asyncio.run(self.idasen_desk.move_down())
+                        if deskMovingAutomatically == False:
+                            time.sleep(0.75)
+                            deskMovingAutomatically = True
+                            log("waiting 500 msec for desk to workaround issue...")                            
                     refresh_auto_counter = refresh_counter_limit #force refresh                   
 
                 #auto-refresh current height label
@@ -226,8 +252,8 @@ class DeskWorkerThread(Thread):
                     height = asyncio.run(self.idasen_desk.get_height())
                     if self.current_height != height:
                         self.current_height = height
-                        self._notify_window.gbHeightBtn.SetLabel(f"{self.current_height:.2f}")
-                        self._notify_window.gbHeightBtn.Refresh() 
+                        self._parent_window.gbHeightBtn.SetLabel(f"{self.current_height:.2f}")
+                        self._parent_window.gbHeightBtn.Refresh() 
                     refresh_auto_counter = 0
                 else:
                     # we are IDLE... refresh UI slowly
@@ -240,26 +266,37 @@ class DeskWorkerThread(Thread):
             log(e)
             self.connected = False
             self.workerThread = False 
-            self._notify_window.showDisabledButton()
+            self._parent_window.showDisabledButton()
+            sys.exit(1)
+        
         
 class MyForm(wx.Frame):
  
     #----------------------------------------------------------------------
     def __init__(self):
-        size = wx.Size(465,90)
-        style = wx.DEFAULT_FRAME_STYLE & ~(wx.RESIZE_BORDER | wx.MAXIMIZE_BOX| wx.SYSTEM_MENU  | wx.CLIP_CHILDREN)
-        self.myFrame = wx.MiniFrame.__init__(self,None, wx.ID_ANY, "Idasen - Desk Control", wx.DefaultPosition, size, style, "")
-                
+        size = wx.Size(465,85)
+        self.defaultstyle = wx.DEFAULT_FRAME_STYLE & ~(wx.RESIZE_BORDER | wx.MAXIMIZE_BOX| wx.SYSTEM_MENU)
+        self.myFrame = wx.MiniFrame.__init__(self,None, wx.ID_ANY, "Idasen - Desk Control Application v1.1.0", wx.DefaultPosition, size, self.defaultstyle, "")
+        
+        # prepare the popmenu
+        self._popmenu = PopMenu(self)
+
+        if config["always_on_top"] == 1:
+            self._popmenu._aotMenu.Check(True)
+            self.SetWindowStyle(self.defaultstyle | wx.STAY_ON_TOP)            
+        
         icon = wx.Icon()
         icon.CopyFromBitmap(wx.Bitmap("appicon.png", wx.BITMAP_TYPE_ANY))
         self.SetIcon(icon)        
         
-        panel = wx.Panel(self, wx.ID_ANY)      
+        panel = wx.Panel(self, wx.ID_ANY)            
+        panel.Bind(wx.EVT_RIGHT_DOWN, self.OnRightClick) 
         
         bmp = wx.Bitmap("bt-nc.png", wx.BITMAP_TYPE_ANY)          
         btsize = wx.Size(60,46)
         self.gbBluetoothBtn = GB.GradientButton(panel, bitmap=bmp, label="", size=btsize)                        
         self.gbBluetoothBtn.Bind(wx.EVT_BUTTON, self.onBtBtnPress) 
+        self.gbBluetoothBtn.Bind(wx.EVT_RIGHT_DOWN, self.OnRightClick)
         self.gbBluetoothBtn.SetToolTip(wx.ToolTip("Make sure desk is connected and paired to computer.\nPress Bluetooth button to discover desk."))                         
                                   
         self.gbHeightBtn = GB.GradientButton(panel, label="N/A")
@@ -267,35 +304,44 @@ class MyForm(wx.Frame):
         font = wx.Font(wx.FontInfo(24).FaceName("Arial").Bold())
         self.gbHeightBtn.SetFont(font)
         self.gbHeightBtn.SetInitialSize(size)
+        self.gbHeightBtn.Bind(wx.EVT_RIGHT_DOWN, self.OnRightClick)
         self.gbHeightBtn.Disable()
 		
         bmp = wx.Bitmap("up-nc.png", wx.BITMAP_TYPE_ANY)
         self.gbUpBtn = GB.GradientButton(panel, bitmap=bmp, label="", size=btsize)        
-        self.gbUpBtn.Bind( wx.EVT_LEFT_DOWN, self.onBtnUpPress);
-        self.gbUpBtn.Bind( wx.EVT_LEFT_UP, self.onBtnUpRelease);
+        self.gbUpBtn.Bind( wx.EVT_LEFT_DOWN, self.onBtnUpPress)
+        self.gbUpBtn.Bind( wx.EVT_LEFT_UP, self.onBtnUpRelease)
+        self.gbUpBtn.Bind(wx.EVT_RIGHT_DOWN, self.OnRightClick)
         self.gbUpBtn.Disable()
         
         bmp = wx.Bitmap("down-nc.png", wx.BITMAP_TYPE_ANY)
         self.gbDownBtn = GB.GradientButton(panel, bitmap=bmp, label="", size=btsize)
-        self.gbDownBtn.Bind( wx.EVT_LEFT_DOWN, self.onBtnDownPress);
-        self.gbDownBtn.Bind( wx.EVT_LEFT_UP, self.onBtnDownRelease);
+        self.gbDownBtn.Bind( wx.EVT_LEFT_DOWN, self.onBtnDownPress)
+        self.gbDownBtn.Bind( wx.EVT_LEFT_UP, self.onBtnDownRelease)
+        self.gbDownBtn.Bind(wx.EVT_RIGHT_DOWN, self.OnRightClick)
         self.gbDownBtn.Disable()
         
         bmp = wx.Bitmap("pos1-nc.png", wx.BITMAP_TYPE_ANY)
         self.pos1Btn = GB.GradientButton(panel, bitmap=bmp, label="", size=btsize)
         self.pos1Btn.Bind(wx.EVT_BUTTON, self.onBtn1Press)  
+        self.pos1Btn.Bind(wx.EVT_RIGHT_DOWN, self.OnRightClick)
         self.pos1Btn.Disable()       
 
         bmp = wx.Bitmap("pos2-nc.png", wx.BITMAP_TYPE_ANY)
         self.pos2Btn = GB.GradientButton(panel, bitmap=bmp, label="", size=btsize)
         self.pos2Btn.Bind(wx.EVT_BUTTON, self.onBtn2Press)   
+        self.pos2Btn.Bind(wx.EVT_RIGHT_DOWN, self.OnRightClick)
         self.pos2Btn.Disable()       
 
         bmp = wx.Bitmap("m-nc.png", wx.BITMAP_TYPE_ANY)
         self.gbMBtn = GB.GradientButton(panel, bitmap=bmp, label="", size=btsize)
         self.gbMBtn.Bind(wx.EVT_BUTTON, self.onBtnMemoryPress)
+        self.gbMBtn.Bind(wx.EVT_RIGHT_DOWN, self.OnRightClick)
         self.gbMBtn.Disable()
-	
+
+
+        self.Bind(wx.EVT_CLOSE, self.OnClose)
+        
         # Create desk instance that will be running in a separate thread        
         self.buttonUpPressed = False
         self.buttonDownPressed = False    
@@ -308,8 +354,7 @@ class MyForm(wx.Frame):
                 self.idasen_desk.start_running_loop()        
         except Exception as e:
             log("No saved config found")
-            
-            
+                
         sizer = wx.BoxSizer(wx.HORIZONTAL)
         sizer.Add(self.gbBluetoothBtn, 0, wx.ALL, 1)
         sizer.Add(self.gbHeightBtn, 0, wx.ALL, 1)
@@ -321,9 +366,12 @@ class MyForm(wx.Frame):
         
         panel.SetSizer(sizer)
 
-            
-        self.Bind(wx.EVT_CLOSE, self.OnClose)
     #----------------------------------------------------------------------
+    def OnRightClick(self, e): 
+        # sow popu menu 
+        log("OnRightClick")              
+        self.PopupMenu(self._popmenu, e.GetPosition()) 
+        
     def OnClose(self, event):
         self.idasen_desk.stop_running_loop()
         time.sleep(0.5) #wait for thread to exit
@@ -435,10 +483,48 @@ class MyForm(wx.Frame):
         self.gbUpBtn.Enable()
         self.gbDownBtn.Enable()        
 
+# =============================================================================================
+class PopMenu(wx.Menu):  
+    def __init__(self, parent): 
+        super(PopMenu, self).__init__() 
+        self.parent = parent 
+  
+        # menu item 1         
+        self._aotMenu = self.Append(wx.ID_ANY, 'Always on top', kind=wx.ITEM_CHECK) 
+        self.Bind(wx.EVT_MENU, self.ToggleAlwaysOnTop, self._aotMenu)
+                
+        # menu item 2 
+        #popmenu = wx.MenuItem(self, wx.ID_ANY, "Move to secondary screen") 
+        #self.Append(popmenu) 
 
+        # menu item 3
+        #popmenu = wx.MenuItem(self, wx.ID_ANY, "Activate 4 positions") 
+        #self.Append(popmenu) 
+
+       
+    def ToggleAlwaysOnTop(self, e):
+        log("ToggleAlwaysOnTop")
+                
+        if self._aotMenu.IsChecked():
+            log("ToggleAlwaysOnTop checked!")
+            self.parent.SetWindowStyle(self.parent.defaultstyle | wx.STAY_ON_TOP)
+            self._aotMenu.Check(True)
+            _always_on_top = 1
+        else:
+            log("ToggleAlwaysOnTop unchecked!")
+            self.parent.SetWindowStyle(self.parent.defaultstyle)
+            self._aotMenu.Check(False)
+            _always_on_top = 0
+        # save in config    
+        config = load_config()
+        config["always_on_top"] = _always_on_top
+        save_config(config)            
+        
+# =============================================================================================
 # Run the program
-config = load_config()
 if __name__ == "__main__":   
+    config = load_config()
+    
     app = wx.App(False)
     frame = MyForm()
     align_bottom_right(frame)    
