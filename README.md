@@ -1,7 +1,7 @@
 # idasen-ui
 Desk control application that works with ikea IDÅSEN desk.
 
-![app screenshot](./idasen-ui/Idasen snapshot.png)
+![app screenshot](./idasen-ui.png)
 
 IDÅSEN is an electric sitting-standing desk with a Linak bluetooth controller sold by ikea.
 The position of the desk can controlled by a physical switch on the desk or via bluetooth using an phone app.
