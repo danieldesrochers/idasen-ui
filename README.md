@@ -1,15 +1,17 @@
 # idasen-ui
-Application to control ikea IDÅSEN desk.
+Desk control application that works with ikea IDÅSEN desk.
 
 ![app screenshot](./idasen-ui.png)
 
-This application is built on top of the IdasenDesk API made by 'newAM/idasen' which was a heavily modified fork of 'rhyst/idasen-controller'.
-
 IDÅSEN is an electric sitting-standing desk with a Linak bluetooth controller sold by ikea.
-
 The position of the desk can controlled by a physical switch on the desk or via bluetooth using an phone app.
 
-This application controls the Idasen desk via bluetooth from a desktop computer.
+This application controls the Idasen desk via bluetooth from a desktop computer and allows to store two favorite positions.
+
+This application is built in Python on top of the IdasenDesk API made by 'newAM/idasen' which was a heavily modified fork of 'rhyst/idasen-controller'.
+
+The Idasen desk control app (idasen-ui) has been package for Windows 10 for easier installation.
+
 
 Prerequisites
 =============
