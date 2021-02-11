@@ -1,125 +1,271 @@
 # IDASEN UI - DESK CONTROL
+# TODO: minimize/close to system tray icon
+# TODO: hotkey CTRL-1 and CTRL-2 http://www.blog.pythonlibrary.org/2010/12/02/wxpython-keyboard-shortcuts-accelerators/
 # TODO: implement 4 buttons version
 # TODO: right-click to menu 
+#         - toggle menu for log to file setting
+#         - minimize to tray
 #         - move window to other screen
-
 import wx
 import wx.adv
 import wx.lib.agw.gradientbutton as GB
 import wx.lib.agw.aquabutton as AB
 import wx.lib.buttons as GBB
 import functools
-
-from idasen import IdasenDesk
-from typing import Callable
-from typing import List
-from typing import Optional
-from threading import *
+import sys
+import time
 import asyncio
 import logging
 import os
-import sys
 import voluptuous as vol
 import yaml
 import time
 import clr
 
-HOME = os.path.expanduser("~")
-IDASEN_CONFIG_DIRECTORY = os.path.join(HOME, ".config", "idasen-ui")
-IDASEN_CONFIG_PATH = os.path.join(IDASEN_CONFIG_DIRECTORY, "idasen-ui.yaml")
-LOG_TO_CONSOLE = True
+from bleak import BleakClient
+from bleak import discover
+from typing import Dict
+from typing import Optional
+from typing import Tuple
+from typing import Callable
+from typing import List
+from typing import Optional
+from threading import *
 
-DEFAULT_CONFIG = {
+#==========================================================================
+# GLOBAL VARIABLES
+#==========================================================================
+_UUID_HEIGHT: str = "99fa0021-338a-1024-8a49-009c0215f78a"
+_UUID_COMMAND: str = "99fa0002-338a-1024-8a49-009c0215f78a"
+_UUID_REFERENCE_INPUT: str = "99fa0031-338a-1024-8a49-009c0215f78a"
+
+_COMMAND_REFERENCE_INPUT_STOP: bytearray = bytearray([0x01, 0x80])
+_COMMAND_UP: bytearray = bytearray([0x47, 0x00])
+_COMMAND_DOWN: bytearray = bytearray([0x46, 0x00])
+_COMMAND_STOP: bytearray = bytearray([0xFF, 0x00])
+
+_HOME = os.path.expanduser("~")
+_IDASEN_CONFIG_DIRECTORY = os.path.join(_HOME, ".config", "idasen-ui")
+_IDASEN_CONFIG_PATH = os.path.join(_IDASEN_CONFIG_DIRECTORY, "idasen-ui.yaml")
+_LOG_TO_CONSOLE = True
+
+_DEFAULT_CONFIG = {
     "mac_address": "AA:AA:AA:AA:AA:AA",
     "positions": {"pos2": 1.1, "pos1": 0.70},
     "always_on_top": 0,
-    "log_to_file": 1,
+    "log_to_file": 0,
 }
+      
+#==========================================================================
+# IdasenDesk class that works with bleak to connect to desk
+# height calculation offset in meters, assumed to be the same for all desks
+#==========================================================================
+class IdasenDesk:
+    """
+    Idasen desk.
 
-CONFIG_SCHEMA = vol.Schema(
-    {
-        "mac_address": vol.All(str, vol.Length(min=17, max=17)),
-        "positions": {
-            str: vol.All(
-                vol.Any(float, int),
-                vol.Range(min=IdasenDesk.MIN_HEIGHT, max=IdasenDesk.MAX_HEIGHT),
+    Args:
+        mac: Bluetooth MAC address of the desk.
+        exit_on_fail: If set to True, failing to connect will call ``sys.exit(1)``,
+            otherwise the exception will be raised.
+
+    Note:
+        There is no locking to prevent you from running multiple movement
+        coroutines simultaneously.
+
+    Example:
+        Basic Usage::
+
+            from idasen import IdasenDesk
+
+
+            async with IdasenDesk(mac="AA:AA:AA:AA:AA:AA") as desk:
+                # call methods here...
+    """
+    #: Minimum desk height in meters.
+    MIN_HEIGHT: float = 0.62
+
+    #: Maximum desk height in meters.
+    MAX_HEIGHT: float = 1.27
+
+    #: Number of times to retry upon failure to connect.
+    RETRY_COUNT: int = 3
+
+    def __init__(self, mac: str, exit_on_fail: bool = False):
+        self._logger = _DeskLoggingAdapter(
+            logger=logging.getLogger(__name__), extra={"mac": mac}
+        )
+        self._mac = mac
+        self._exit_on_fail = exit_on_fail
+        self._client = BleakClient(self._mac)
+
+    async def __aenter__(self):
+        await self._connect()
+        return self
+
+    async def __aexit__(self, *args, **kwargs) -> Optional[bool]:
+        return await self._client.__aexit__(*args, **kwargs)
+
+    async def _connect(self):
+        i = 0
+        while True:
+            try:
+                await self._client.__aenter__()
+                return
+            except Exception:
+                if i >= self.RETRY_COUNT:
+                    self._logger.critical("Connection failed")
+                    if self._exit_on_fail:
+                        sys.exit(1)
+                    raise
+                i += 1
+                self._logger.warning(
+                    f"Failed to connect, retrying ({i}/{self.RETRY_COUNT})..."
+                )
+                time.sleep(0.3 * i)
+
+    async def is_connected(self) -> bool:
+        """
+        Check connection status of the desk.
+
+        Returns:
+            Boolean representing connection status.
+
+        >>> async def example() -> bool:
+        ...     async with IdasenDesk(mac="AA:AA:AA:AA:AA:AA") as desk:
+        ...         return await desk.is_connected()
+        >>> asyncio.run(example())
+        True
+        """
+        return await self._client.is_connected()
+
+    @property
+    def mac(self) -> str:
+        """ Desk MAC address. """
+        return self._mac
+
+    async def move_up(self):
+        """
+        Move the desk upwards.
+
+        This command moves the desk upwards for a fixed duration
+        (approximately one second) as set by your desk controller.
+
+        >>> async def example():
+        ...     async with IdasenDesk(mac="AA:AA:AA:AA:AA:AA") as desk:
+        ...         await desk.move_up()
+        >>> asyncio.run(example())
+        """
+        await self._client.write_gatt_char(_UUID_COMMAND, _COMMAND_UP, response=False)
+
+    async def move_down(self):
+        """
+        Move the desk downwards.
+
+        This command moves the desk downwards for a fixed duration
+        (approximately one second) as set by your desk controller.
+
+        >>> async def example():
+        ...     async with IdasenDesk(mac="AA:AA:AA:AA:AA:AA") as desk:
+        ...         await desk.move_down()
+        >>> asyncio.run(example())
+        """
+        await self._client.write_gatt_char(_UUID_COMMAND, _COMMAND_DOWN, response=False)
+
+    async def move_to_target(self, target: float):
+        """
+        Move the desk to the target position.
+
+        Args:
+            target: Target position in meters.
+
+        Raises:
+            ValueError: Target exceeds maximum or minimum limits.
+
+        >>> async def example():
+        ...     async with IdasenDesk(mac="AA:AA:AA:AA:AA:AA") as desk:
+        ...         await desk.move_to_target(1.1)
+        >>> asyncio.run(example())
+        """
+        if target > self.MAX_HEIGHT:
+            raise ValueError(
+                f"target position of {target:.3f} meters exceeds maximum of "
+                f"{self.MAX_HEIGHT:.3f}"
             )
-        },
-        "always_on_top": vol.All(int),
-        "log_to_file": vol.All(int),
-    },
-    extra=False,
-)
-       
-def log(msg):
-    if LOG_TO_CONSOLE:
-        print(msg)
-    else:
-        logging.info(msg)
-            
-def message_to_user(msg):
-        dlg = wx.MessageDialog(None, msg, "Message", wx.OK|wx.ICON_EXCLAMATION)
-        dlg.ShowModal()
-        dlg.Destroy()        
-                     
-def align_bottom_right(win):
-    dw, dh = wx.DisplaySize()
-    w, h = win.GetSize()
-    x = dw - w
-    y = dh - h - 35
-    win.SetPosition((x, y))
-    
-def save_config(config: dict, path: str = IDASEN_CONFIG_PATH):
-    with open(path, "w") as f:
-        yaml.dump(config, f)
+        elif target < self.MIN_HEIGHT:
+            raise ValueError(
+                f"target position of {target:.3f} meters exceeds minimum of "
+                f"{self.MIN_HEIGHT:.3f}"
+            )
 
+        while True:
+            height = await self.get_height()
+            difference = target - height
+            self._logger.debug(f"{target=} {height=} {difference=}")
+            if abs(difference) < 0.005:  # tolerance of 0.005 meters
+                self._logger.info(f"reached target of {target:.3f}")
+                await self.stop()
+                return
+            elif difference > 0:
+                await self.move_up()
+            elif difference < 0:
+                await self.move_down()
 
-def load_config(path: str = IDASEN_CONFIG_PATH) -> dict:
-    """ Load user config. """
-    try:
-        with open(path, "r") as f:
-            config = yaml.load(f, Loader=yaml.FullLoader)
-    except FileNotFoundError:
-        return {}
+    async def stop(self):
+        """ Stop desk movement. """
+        await asyncio.gather(
+            self._client.write_gatt_char(_UUID_COMMAND, _COMMAND_STOP, response=False),
+            self._client.write_gatt_char(
+                _UUID_REFERENCE_INPUT, _COMMAND_REFERENCE_INPUT_STOP, response=False
+            ),
+        )
 
-    # convert old config file format
-    if "always_on_top" not in config:
-        config["always_on_top"] = 0
-        save_config(config, path)
+    async def get_height(self) -> float:
+        """
+        Get the desk height in meters.
+
+        Returns:
+            Desk height in meters.
+
+        >>> async def example() -> float:
+        ...     async with IdasenDesk(mac="AA:AA:AA:AA:AA:AA") as desk:
+        ...         await desk.move_to_target(1.0)
+        ...         return await desk.get_height()
+        >>> asyncio.run(example())
+        1.0
+        """
+        return _bytes_to_meters(await self._client.read_gatt_char(_UUID_HEIGHT))
+
+    @classmethod
+    async def discover(cls) -> Optional[str]:
+        """
+        Try to find the desk's MAC address by discovering currently connected devices.
+
+        Returns:
+            MAC address if found, ``None`` if not found.
+        """
+        try:
+            devices = await discover()
+        except Exception:
+            return None
+        return next(
+            (device.address for device in devices if device.name.startswith("Desk")),
+            None,
+        )
+#==========================================================================
+# _DeskLoggingAdapter private class 
+#==========================================================================
+class _DeskLoggingAdapter(logging.LoggerAdapter):
+    """ Prepends logging messages with the desk MAC address. """
+
+    def process(self, msg: str, kwargs: Dict[str, str]) -> Tuple[str, Dict[str, str]]:
+        return f"[{self.extra['mac']}] {msg}", kwargs
+
         
-    if "log_to_file" not in config:
-        config["log_to_file"] = 1
-        save_config(config, path)
-        
-    try:
-        config = CONFIG_SCHEMA(config)
-    except vol.Invalid as e:
-        message_to_user(f"Invalid configuration: {e}", file=sys.stderr)
-        
-    return config
-        
-async def discover_desk() -> bool:
-    mac = await IdasenDesk.discover()
-    global config
-    if mac is not None:
-        log(f"Discovered desk's MAC address: {mac}")
-        if os.path.isfile(IDASEN_CONFIG_PATH):
-            #update existing config
-            config = load_config()
-            config["mac_address"] = mac            
-            save_config(config)
-        else:
-            #create new config file
-            DEFAULT_CONFIG["mac_address"] = mac
-            os.makedirs(IDASEN_CONFIG_DIRECTORY, exist_ok=True)            
-            config = DEFAULT_CONFIG
-            save_config(config)            
-        return True
-    else:
-        return False
-                
-########################################################################
-# Thread class that executes processing
+#===============================================================
+# DeskWorkerThread class that executes processing
+# Running in distinct threat with a pseudo-realtime algo
+#===============================================================
 class DeskWorkerThread(Thread):
     """Worker Thread Class."""
     def __init__(self, parent_window):
@@ -158,7 +304,7 @@ class DeskWorkerThread(Thread):
         else:
             log(f"moving to target height of {height:.3f} meters")
             self.desk_height_target = height            
-
+            
     def run(self):
         """Run Worker Thread."""   
         log("Starting worker thread...")
@@ -275,7 +421,10 @@ class DeskWorkerThread(Thread):
             self._parent_window.showDisabledButton()
             sys.exit(1)
         
-        
+            
+# =============================================================================================
+# MyForm class is the main form
+# =============================================================================================
 class MyForm(wx.Frame):
  
     #----------------------------------------------------------------------
@@ -497,6 +646,8 @@ class MyForm(wx.Frame):
         self.gbDownBtn.Enable()        
 
 # =============================================================================================
+# PopMenu class implementing right-click menu
+# =============================================================================================
 class PopMenu(wx.Menu):  
     def __init__(self, parent): 
         super(PopMenu, self).__init__() 
@@ -533,15 +684,125 @@ class PopMenu(wx.Menu):
         config["always_on_top"] = _always_on_top
         save_config(config)            
         
+
+    
 # =============================================================================================
-# Run the program
+# =============================================================================================
+# Global function...
+# =============================================================================================
+# =============================================================================================
+
+CONFIG_SCHEMA = vol.Schema(
+    {
+        "mac_address": vol.All(str, vol.Length(min=17, max=17)),
+        "positions": {
+            str: vol.All(
+                vol.Any(float, int),
+                vol.Range(min=IdasenDesk.MIN_HEIGHT, max=IdasenDesk.MAX_HEIGHT),
+            )
+        },
+        "always_on_top": vol.All(int),
+        "log_to_file": vol.All(int),
+    },
+    extra=False,
+)
+       
+def log(msg):
+    if _LOG_TO_CONSOLE:
+        print(msg)
+    else:
+        logging.info(msg)
+            
+def message_to_user(msg):
+        dlg = wx.MessageDialog(None, msg, "Message", wx.OK|wx.ICON_EXCLAMATION)
+        dlg.ShowModal()
+        dlg.Destroy()        
+                     
+def align_bottom_right(win):
+    dw, dh = wx.DisplaySize()
+    w, h = win.GetSize()
+    x = dw - w
+    y = dh - h - 35
+    win.SetPosition((x, y))
+    
+def save_config(config: dict, path: str = _IDASEN_CONFIG_PATH):
+    os.makedirs(_IDASEN_CONFIG_DIRECTORY, exist_ok=True)    
+    with open(path, "w") as f:
+        yaml.dump(config, f)
+
+
+def load_config(path: str = _IDASEN_CONFIG_PATH) -> dict:
+    """ Load user config. """    
+    print(f"Loading config from: {path}")
+    try:
+        with open(path, "r") as f:
+            config = yaml.load(f, Loader=yaml.FullLoader)
+    except FileNotFoundError:      
+        print(f"Config file not found: creating default config file")    
+        save_config(_DEFAULT_CONFIG)
+        return load_config()        
+
+    # convert old config file format
+    if "always_on_top" not in config:
+        config["always_on_top"] = 0
+        save_config(config, path)
+        
+    if "log_to_file" not in config:
+        config["log_to_file"] = 0
+        save_config(config, path)
+        
+    # Validate configuration    
+    try:
+        config = CONFIG_SCHEMA(config)
+    except vol.Invalid as e:
+        message_to_user(f"Invalid configuration: {e}", file=sys.stderr)
+        
+    return config
+        
+async def discover_desk() -> bool:
+    mac = await IdasenDesk.discover()
+    global config
+    if mac is not None:
+        log(f"Discovered desk's MAC address: {mac}")
+        if os.path.isfile(_IDASEN_CONFIG_PATH):
+            #update existing config
+            config = load_config()
+            config["mac_address"] = mac            
+            save_config(config)
+        else:
+            #create new config file
+            _DEFAULT_CONFIG["mac_address"] = mac
+            os.makedirs(_IDASEN_CONFIG_DIRECTORY, exist_ok=True)            
+            config = _DEFAULT_CONFIG
+            save_config(config)            
+        return True
+    else:
+        return False
+
+
+def _bytes_to_meters(raw: bytearray) -> float:
+    """ Converts a value read from the desk in bytes to meters. """
+    raw_len = len(raw)
+    expected_len = 4
+    assert (
+        raw_len == expected_len
+    ), f"Expected raw value to be {expected_len} bytes long, got {raw_len} bytes"
+
+    high_byte = int(raw[1])
+    low_byte = int(raw[0])
+    raw = (high_byte << 8) + low_byte
+    return float(raw / 10000) + IdasenDesk.MIN_HEIGHT
+    
+# =============================================================================================
+# Main program
+# =============================================================================================
 if __name__ == "__main__":
    
     config = load_config()
 
     if config["log_to_file"] == 1:
-        LOG_TO_CONSOLE = False
-        logging.basicConfig(filename='myapp.log', level=logging.DEBUG)
+        _LOG_TO_CONSOLE = False
+        logging.basicConfig(filename='myapp.log', filemode='w', level=logging.DEBUG)
         logging.info('Started')
     else:
         logging.basicConfig(level=logging.DEBUG)

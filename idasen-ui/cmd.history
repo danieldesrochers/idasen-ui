@@ -13,4 +13,10 @@ python -m pip install --upgrade idasen
 python -m pip install --upgrade pyinstaller
 
 # Build a distrib from
-pyinstaller idasen-ui.spec
+- update file_version_info.txt with target version
+- Run "pyinstaller idasen-ui.spec"
+- Zip C:\code\git\idasen-ui\idasen-ui\dist\idasen-ui to idasen-ui.zip
+- Rename idasen-ui.zip to file idasen-ui-<version>.zip
+
+# Remember to update Readme.md
+using https://guides.github.com/features/mastering-markdown/

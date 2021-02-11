@@ -1,3 +1,8 @@
+= Release 1.1.2 =
+    * Fixed python installer issue
+    * Fixed loading issue reported by some users
+    * Changed log_to_file approach to overwrite log file instead of appending
+    
 = Release 1.1.1 =
     * Added log_to_file setting in configuration
     * Added debug trace to investigate issue reported by user.
