@@ -1,3 +1,7 @@
+= Release 1.1.1 =
+    * Added log_to_file setting in configuration
+    * Added debug trace to investigate issue reported by user.
+    
 = Release 1.1.0 =
     * Added right-click menu with Always-On-Top window
     * Added Always-On-Top setting in configuration
