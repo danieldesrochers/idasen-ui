@@ -19,7 +19,7 @@ The desk should be connected and paired to the computer.
 
 Install Idasen-UI
 =================
-- Download idasen-ui package from win32-build (https://github.com/danieldesrochers/idasen-ui/tree/main/win32-build)
+- Download latest release idasen-ui package (https://github.com/danieldesrochers/idasen-ui/releases)
 
 - Unzip the package to any <folder> with read-write user permissions (e.g.: c:/Program Files)
 
