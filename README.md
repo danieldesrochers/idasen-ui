@@ -30,9 +30,9 @@ Install Idasen-UI
 =================
 - Download latest release idasen-ui package (https://github.com/danieldesrochers/idasen-ui/releases)
 
-- Unzip the package to any <folder> with read-write user permissions (e.g.: c:/Program Files)
+- Unzip the package to any **\<folder\>** with read-write user permissions (e.g.: c:/Program Files)
 
-- Browse to your extracted <folder>/idasen-ui 
+- Browse to your extracted **\<folder\>**/idasen-ui 
 
 - Run 'idasen-ui.exe'
 
