@@ -19,7 +19,7 @@ The Idasen desk control app (idasen-ui) has been package for Windows 10 for easi
 
 Prerequisites
 =============
-The desk should be connected and paired to the computer.
+**The desk must be connected and paired to the computer before launching the application.**
 
 Install Idasen-UI
 =================
