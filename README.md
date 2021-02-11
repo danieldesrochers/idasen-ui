@@ -21,7 +21,7 @@ Install Idasen-UI
 =================
 - Download idasen-ui package from win32-build (https://github.com/danieldesrochers/idasen-ui/tree/main/win32-build)
 
-- Unzip the package to any <folder> with read-write user permissions (e.g.: c:/MyPrograms)
+- Unzip the package to any <folder> with read-write user permissions (e.g.: c:/Program Files)
 
 - Browse to your extracted <folder>/idasen-ui 
 
