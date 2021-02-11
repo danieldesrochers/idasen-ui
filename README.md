@@ -1,5 +1,9 @@
 # idasen-ui
+
+[Get latest version here!](https://github.com/danieldesrochers/idasen-ui/releases)
+
 Desk control application that works with ikea IDÅSEN desk.
+
 
 ![app screenshot](./idasen-ui.png)
 
