@@ -20,6 +20,11 @@ The Idasen desk control app (idasen-ui) has been package for Windows 10 for easi
 Prerequisites
 =============
 **The desk must be connected and paired to the computer before launching the application.**
+- Open Windows Parameters
+- Find your Bluetooth settings
+- Put the IKEA Idasen desk in pairing mode (blue light will flash slowly)
+- On the Bluetooth setting window, click "Add a Bluetooth device"
+- Select "Desk 8638" and add it to your bluetooth devices
 
 Install Idasen-UI
 =================
