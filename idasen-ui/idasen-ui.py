@@ -1,5 +1,4 @@
 # IDASEN UI - DESK CONTROL
-# TODO: log to file control by config ?
 # TODO: implement 4 buttons version
 # TODO: right-click to menu 
 #         - move window to other screen
@@ -34,7 +33,7 @@ DEFAULT_CONFIG = {
     "mac_address": "AA:AA:AA:AA:AA:AA",
     "positions": {"pos2": 1.1, "pos1": 0.70},
     "always_on_top": 0,
-    
+    "log_to_file": 1,
 }
 
 CONFIG_SCHEMA = vol.Schema(
@@ -46,7 +45,8 @@ CONFIG_SCHEMA = vol.Schema(
                 vol.Range(min=IdasenDesk.MIN_HEIGHT, max=IdasenDesk.MAX_HEIGHT),
             )
         },
-        "always_on_top": vol.All(int),        
+        "always_on_top": vol.All(int),
+        "log_to_file": vol.All(int),
     },
     extra=False,
 )
@@ -54,6 +54,8 @@ CONFIG_SCHEMA = vol.Schema(
 def log(msg):
     if LOG_TO_CONSOLE:
         print(msg)
+    else:
+        logging.info(msg)
             
 def message_to_user(msg):
         dlg = wx.MessageDialog(None, msg, "Message", wx.OK|wx.ICON_EXCLAMATION)
@@ -83,6 +85,10 @@ def load_config(path: str = IDASEN_CONFIG_PATH) -> dict:
     # convert old config file format
     if "always_on_top" not in config:
         config["always_on_top"] = 0
+        save_config(config, path)
+        
+    if "log_to_file" not in config:
+        config["log_to_file"] = 1
         save_config(config, path)
         
     try:
@@ -277,6 +283,7 @@ class MyForm(wx.Frame):
         size = wx.Size(465,85)
         self.defaultstyle = wx.DEFAULT_FRAME_STYLE & ~(wx.RESIZE_BORDER | wx.MAXIMIZE_BOX| wx.SYSTEM_MENU)
         self.myFrame = wx.MiniFrame.__init__(self,None, wx.ID_ANY, "Idasen - Desk Control Application v1.1.0", wx.DefaultPosition, size, self.defaultstyle, "")
+        logging.debug('MyForm:_init_: miniframe created')
         
         # prepare the popmenu
         self._popmenu = PopMenu(self)
@@ -287,10 +294,11 @@ class MyForm(wx.Frame):
         
         icon = wx.Icon()
         icon.CopyFromBitmap(wx.Bitmap("appicon.png", wx.BITMAP_TYPE_ANY))
-        self.SetIcon(icon)        
+        self.SetIcon(icon)   
+        logging.debug('MyForm:_init_: appicon found')
         
         panel = wx.Panel(self, wx.ID_ANY)            
-        panel.Bind(wx.EVT_RIGHT_DOWN, self.OnRightClick) 
+        panel.Bind(wx.EVT_RIGHT_DOWN, self.OnRightClick)        
         
         bmp = wx.Bitmap("bt-nc.png", wx.BITMAP_TYPE_ANY)          
         btsize = wx.Size(60,46)
@@ -342,11 +350,16 @@ class MyForm(wx.Frame):
 
         self.Bind(wx.EVT_CLOSE, self.OnClose)
         
+        logging.debug('MyForm:_init_: all button created and bind')
+        
         # Create desk instance that will be running in a separate thread        
         self.buttonUpPressed = False
         self.buttonDownPressed = False    
         self.buttonMemoryPressed = False
+        
+        logging.debug('MyForm:_init_: about to create DeskWorkerThread')
         self.idasen_desk = DeskWorkerThread(self) 
+        logging.debug('MyForm:_init_: DeskWorkerThread created')
         # Try to connect to Idasen desk based on previous saved config
         try:            
             if self.idasen_desk.connect():            
@@ -354,7 +367,7 @@ class MyForm(wx.Frame):
                 self.idasen_desk.start_running_loop()        
         except Exception as e:
             log("No saved config found")
-                
+            
         sizer = wx.BoxSizer(wx.HORIZONTAL)
         sizer.Add(self.gbBluetoothBtn, 0, wx.ALL, 1)
         sizer.Add(self.gbHeightBtn, 0, wx.ALL, 1)
@@ -522,11 +535,22 @@ class PopMenu(wx.Menu):
         
 # =============================================================================================
 # Run the program
-if __name__ == "__main__":   
+if __name__ == "__main__":
+   
     config = load_config()
-    
+
+    if config["log_to_file"] == 1:
+        LOG_TO_CONSOLE = False
+        logging.basicConfig(filename='myapp.log', level=logging.DEBUG)
+        logging.info('Started')
+    else:
+        logging.basicConfig(level=logging.DEBUG)
+        
     app = wx.App(False)
+    logging.debug('Main App created')
     frame = MyForm()
+    logging.debug('Main Form created')
     align_bottom_right(frame)    
     frame.Show()
+    logging.debug('Main Starting MainLoop')
     app.MainLoop()
