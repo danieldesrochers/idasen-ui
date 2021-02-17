@@ -10,6 +10,7 @@ echo.
 echo Is idasen-ui title window updated ?
 echo.
 pause
+=======
 rmdir /s /q __pycache__
 rmdir /s /q build
 rmdir /s /q dist
