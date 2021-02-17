@@ -44,7 +44,8 @@ Idasen Desk Control application is a simple graphical user interface.
 
 Connect your desk
 ------------------
-When application runs for the first time, no save configuration will be found.
+When application runs for the first time, no save configuration will be found. 
+Be patient, it might take few minutes to explore all Bluetooth devices paired with the computer.
 Click Bluetooth button to discover your desk and save initial configuration.
 
 You are connected!
