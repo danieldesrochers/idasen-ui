@@ -1,3 +1,8 @@
+= Release 1.2.1 =
+    * Added minimize to tray option    
+    * Added right-click menu to control tray option
+    * Added minimize_to_tray setting in configuration
+
 = Release 1.1.2 =
     * Fixed python installer issue
     * Fixed loading issue reported by some users

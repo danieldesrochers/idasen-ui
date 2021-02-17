@@ -1,23 +1,24 @@
 # IDASEN UI - DESK CONTROL
-# TODO: minimize/close to system tray icon
 # TODO: hotkey CTRL-1 and CTRL-2 http://www.blog.pythonlibrary.org/2010/12/02/wxpython-keyboard-shortcuts-accelerators/
 # TODO: implement 4 buttons version
-# TODO: right-click to menu 
-#         - toggle menu for log to file setting
-#         - minimize to tray
-#         - move window to other screen
+# TODO: Automove on schedule during a period 
+#       - between 9am to 5pm, 
+#       - cycle of 60 min,
+#       - pos2 every hh:10, pos1 every hh:30
+# TODO: right-click to menu
+#       - move window to other screen
+#       - enable/disable minimize to tray option
 import wx
 import wx.adv
 import wx.lib.agw.gradientbutton as GB
 import wx.lib.agw.aquabutton as AB
 import wx.lib.buttons as GBB
+import voluptuous as vol
 import functools
 import sys
-import time
 import asyncio
 import logging
 import os
-import voluptuous as vol
 import yaml
 import time
 import clr
@@ -54,6 +55,7 @@ _DEFAULT_CONFIG = {
     "positions": {"pos2": 1.1, "pos1": 0.70},
     "always_on_top": 0,
     "log_to_file": 0,
+    "minimize_to_tray": 0,
 }
       
 #==========================================================================
@@ -421,6 +423,68 @@ class DeskWorkerThread(Thread):
             self._parent_window.showDisabledButton()
             sys.exit(1)
         
+# ===============================================================================================
+# Taskbar icon that goes in system tray
+# ===============================================================================================
+class CustomTaskBarIcon(wx.adv.TaskBarIcon):
+    #----------------------------------------------------------------------
+    def __init__(self, frame):
+        """Constructor"""
+        wx.adv.TaskBarIcon.__init__(self)
+        self.frame = frame
+        
+        self.icon = wx.Icon()
+        self.icon.CopyFromBitmap(wx.Bitmap("appicon.png", wx.BITMAP_TYPE_ANY))     
+        self.SetIcon(self.icon, "Restore")
+        logging.debug('MyForm:_init_: appicon found')
+
+        self.Bind(wx.adv.EVT_TASKBAR_LEFT_DOWN, self.OnTaskBarLeftClick)
+        
+        self.Bind(wx.adv.EVT_TASKBAR_RIGHT_UP, self.ShowMenu)  
+        self.menu=wx.Menu()
+        self.hideUnhideID = wx.ID_ANY
+        self.menu.Append(self.hideUnhideID, "Tray / Untray")  
+        self.menu.AppendSeparator()
+        self.movePos1ID = wx.ID_ANY+1
+        self.menu.Append(self.movePos1ID, "Move to position 1")  
+        self.movePos2ID = wx.ID_ANY+2
+        self.menu.Append(self.movePos2ID, "Move to position 2")  
+        self.menu.AppendSeparator()
+        self.exitID = wx.ID_ANY+3
+        self.menu.Append(self.exitID, "Exit")      
+         
+        self.Bind(wx.EVT_MENU, self.OnTaskBarLeftClick, id=self.hideUnhideID)
+        self.Bind(wx.EVT_MENU, self.frame.onBtn1Press, id=self.movePos1ID)   
+        self.Bind(wx.EVT_MENU, self.frame.onBtn2Press, id=self.movePos2ID)   
+        self.Bind(wx.EVT_MENU, self.OnTaskBarClose, id=self.exitID)        
+ 
+    #----------------------------------------------------------------------
+    def OnTaskBarActivate(self, evt):
+        """"""
+        pass
+ 
+    def ShowMenu(self,event):  
+        self.PopupMenu(self.menu)  
+ 
+    #----------------------------------------------------------------------
+    def OnTaskBarClose(self, evt):
+        self.frame.Close()
+ 
+    #----------------------------------------------------------------------
+    def OnTaskBarLeftClick(self, evt):  
+        if self.frame._minToTray == True:
+            if self.frame.IsShown():
+                self.frame.Hide()
+            else:
+                self.frame.Show()
+                self.frame.Restore()
+        else:
+            if self.frame.IsIconized():
+                self.frame.Restore()
+            else:
+                self.frame.Iconize()    
+
+            
             
 # =============================================================================================
 # MyForm class is the main form
@@ -431,20 +495,23 @@ class MyForm(wx.Frame):
     def __init__(self):
         size = wx.Size(465,85)
         self.defaultstyle = wx.DEFAULT_FRAME_STYLE & ~(wx.RESIZE_BORDER | wx.MAXIMIZE_BOX| wx.SYSTEM_MENU)
-        self.myFrame = wx.MiniFrame.__init__(self,None, wx.ID_ANY, "Idasen - Desk Control Application v1.1.0", wx.DefaultPosition, size, self.defaultstyle, "")
+        self.myFrame = wx.MiniFrame.__init__(self,None, wx.ID_ANY, "Idasen - Desk Control Application v1.2.1", wx.DefaultPosition, size, self.defaultstyle, "")
         logging.debug('MyForm:_init_: miniframe created')
+        self._minToTray = False
         
         # prepare the popmenu
         self._popmenu = PopMenu(self)
 
         if config["always_on_top"] == 1:
             self._popmenu._aotMenu.Check(True)
-            self.SetWindowStyle(self.defaultstyle | wx.STAY_ON_TOP)            
-        
-        icon = wx.Icon()
-        icon.CopyFromBitmap(wx.Bitmap("appicon.png", wx.BITMAP_TYPE_ANY))
-        self.SetIcon(icon)   
-        logging.debug('MyForm:_init_: appicon found')
+            self.SetWindowStyle(self.defaultstyle | wx.STAY_ON_TOP)
+
+        if config["minimize_to_tray"] == 1:
+            self._popmenu._mttMenu.Check(True)
+            self._minToTray = True
+                    
+              
+        self.tbIcon = CustomTaskBarIcon(self)        
         
         panel = wx.Panel(self, wx.ID_ANY)            
         panel.Bind(wx.EVT_RIGHT_DOWN, self.OnRightClick)        
@@ -496,8 +563,8 @@ class MyForm(wx.Frame):
         self.gbMBtn.Bind(wx.EVT_RIGHT_DOWN, self.OnRightClick)
         self.gbMBtn.Disable()
 
-
         self.Bind(wx.EVT_CLOSE, self.OnClose)
+        self.Bind(wx.EVT_ICONIZE, self.onMinimize)
         
         logging.debug('MyForm:_init_: all button created and bind')
         
@@ -513,7 +580,7 @@ class MyForm(wx.Frame):
         try:            
             if self.idasen_desk.connect():            
                 self.showConnectedButton()
-                self.idasen_desk.start_running_loop()        
+                self.idasen_desk.start_running_loop()    
         except Exception as e:
             log("No saved config found")
             
@@ -537,8 +604,17 @@ class MyForm(wx.Frame):
     def OnClose(self, event):
         self.idasen_desk.stop_running_loop()
         time.sleep(0.5) #wait for thread to exit
+        self.tbIcon.RemoveIcon()
+        self.tbIcon.Destroy()
         event.Skip()
         
+    def onMinimize(self, event):
+        if self._minToTray == True:
+            if self.IsIconized():
+                self.Hide()
+        else:
+            event.Skip()
+            
     def showDisabledButton(self):                
         self.gbBluetoothBtn.SetBitmapLabel(wx.Bitmap("bt-nc.png", wx.BITMAP_TYPE_ANY))
         self.gbBluetoothBtn.Enable()
@@ -658,11 +734,11 @@ class PopMenu(wx.Menu):
         self.Bind(wx.EVT_MENU, self.ToggleAlwaysOnTop, self._aotMenu)
                 
         # menu item 2 
-        #popmenu = wx.MenuItem(self, wx.ID_ANY, "Move to secondary screen") 
-        #self.Append(popmenu) 
+        self._mttMenu = self.Append(wx.ID_ANY, "Minimize to tray instead of taskbar", kind=wx.ITEM_CHECK) 
+        self.Bind(wx.EVT_MENU, self.ToggleMinimizeToTray, self._mttMenu)
 
         # menu item 3
-        #popmenu = wx.MenuItem(self, wx.ID_ANY, "Activate 4 positions") 
+        #popmenu = wx.MenuItem(self, wx.ID_ANY, "Activate ...") 
         #self.Append(popmenu) 
 
        
@@ -682,9 +758,26 @@ class PopMenu(wx.Menu):
         # save in config    
         config = load_config()
         config["always_on_top"] = _always_on_top
-        save_config(config)            
-        
+        save_config(config)
 
+    def ToggleMinimizeToTray(self, e):
+        log("ToggleMinimizeToTray")
+                
+        if self._mttMenu.IsChecked():
+            log("ToggleMinimizeToTray checked!")            
+            self._mttMenu.Check(True)
+            self.parent._minToTray = True            
+            minToTray = 1
+        else:
+            log("ToggleMinimizeToTray unchecked!")            
+            self._mttMenu.Check(False)
+            self.parent._minToTray = False
+            minToTray = 0
+        # save in config    
+        config = load_config()
+        config["minimize_to_tray"] = minToTray
+        save_config(config)                 
+        
     
 # =============================================================================================
 # =============================================================================================
@@ -703,6 +796,7 @@ CONFIG_SCHEMA = vol.Schema(
         },
         "always_on_top": vol.All(int),
         "log_to_file": vol.All(int),
+        "minimize_to_tray": vol.All(int),
     },
     extra=False,
 )
@@ -751,6 +845,10 @@ def load_config(path: str = _IDASEN_CONFIG_PATH) -> dict:
         config["log_to_file"] = 0
         save_config(config, path)
         
+    if "minimize_to_tray" not in config:
+        config["minimize_to_tray"] = 0
+        save_config(config, path)
+            
     # Validate configuration    
     try:
         config = CONFIG_SCHEMA(config)
