@@ -7,12 +7,15 @@ echo.
 pause
 echo ===================================
 echo.
-echo Is idasen-ui title window updated ?
+echo Is idasen-ui.nsi config updated ?
 echo.
 pause
-=======
+echo =======
 rmdir /s /q __pycache__
 rmdir /s /q build
 rmdir /s /q dist
 rmdir /q dist
 pyinstaller idasen-ui.spec
+pause
+echo =========
+"C:\Program Files (x86)\NSIS\makensis.exe" idasen-ui.nsi

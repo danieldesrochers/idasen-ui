@@ -495,7 +495,7 @@ class MyForm(wx.Frame):
     def __init__(self):
         size = wx.Size(465,85)
         self.defaultstyle = wx.DEFAULT_FRAME_STYLE & ~(wx.RESIZE_BORDER | wx.MAXIMIZE_BOX| wx.SYSTEM_MENU)
-        self.myFrame = wx.MiniFrame.__init__(self,None, wx.ID_ANY, "Idasen - Desk Control Application v1.2.1", wx.DefaultPosition, size, self.defaultstyle, "")
+        self.myFrame = wx.MiniFrame.__init__(self,None, wx.ID_ANY, "Idasen - Desk Control", wx.DefaultPosition, size, self.defaultstyle, "")
         logging.debug('MyForm:_init_: miniframe created')
         self._minToTray = False
         

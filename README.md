@@ -2,7 +2,7 @@
 
 [Get latest version here!](https://github.com/danieldesrochers/idasen-ui/releases)
 
-Desk control application that works with ikea IDÅSEN desk.
+Idasen Desk control works with ikea IDÅSEN desk.
 
 
 ![app screenshot](./idasen-ui.png)
@@ -26,21 +26,20 @@ Prerequisites
 - On the Bluetooth setting window, click "Add a Bluetooth device"
 - Select "Desk 8638" and add it to your bluetooth devices
 
-Install Idasen-UI
-=================
-- Download latest release idasen-ui package (https://github.com/danieldesrochers/idasen-ui/releases)
+Install Idasen Desk Control
+===========================
+- Download latest release installer (https://github.com/danieldesrochers/idasen-ui/releases)
 
-- Unzip the package to any **\<folder\>** with read-write user permissions (e.g.: c:/Program Files)
+- Download and launch the latest installer (i.e.: idasen desk control v1.3.0.exe)
 
-- Browse to your extracted **\<folder\>**/idasen-ui 
+- Accept the license and choose your installation folder 
 
-- Run 'idasen-ui.exe'
+- A new 'Idasen Desk Control' shortcut will be created in Windows Start menu
 
-For faster access to the application, consider creating a shortcut on your desktop and start menu.
 
-How To Use Idasen-UI
-====================
-Idasen Desk Control application is a simple graphical user interface.
+How To Use Idasen Desk Control
+==============================
+Idasen Desk Control is a simple user interface to control your IKEA IDASEN desk.
 
 Connect your desk
 ------------------
@@ -54,6 +53,10 @@ Once connected to the desk, current desk position will be displayed and moving b
 - Press and maintain the up/down arrow the move the desk to the desired position.
 - Press M(emory) button to save the current position to 1 or 2.
 - Press position 1 or 2 to move the desk to the save position.
+
+Right-click on the Idasen Desk Control display to control the user interface
+- Always on top
+- Minimize to tray instead of taskbar
 
 Known issues
 ============
