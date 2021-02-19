@@ -1,4 +1,4 @@
-# idasen-ui
+# Idasen Desk Control
 
 [Get latest version here!](https://github.com/danieldesrochers/idasen-ui/releases)
 
